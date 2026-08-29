@@ -42,6 +42,35 @@ discord.py 기반 디스코드 봇. 캐릭터 페르소나를 갈아끼울 수 �
    python bot.py
    ```
 
+## 대화 기능
+
+`ANTHROPIC_API_KEY`가 있으면 페르소나로 대화합니다. 키가 없으면 이 기능만 조용히
+꺼지고 슬래시 명령어는 그대로 동작합니다.
+
+말을 거는 방법은 세 가지입니다. 멘션(`@차라`), 이름으로 시작하는 메시지
+(`차라 오늘 힘들었어`), 봇 메시지에 답장. 그 외 대화에는 끼어들지 않습니다 —
+페르소나 문서의 "먼저 말 걸지 않는다"를 그대로 옮긴 것입니다.
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+PERSONA_MODEL=claude-sonnet-5
+PERSONA_EFFORT=low
+```
+
+`PERSONA_EFFORT`는 생각의 깊이입니다 (`low`|`medium`|`high`|`xhigh`|`max`).
+대화는 낮은 쪽이 어울리고 저렴합니다. 코딩이나 장기 에이전트 작업과 달리 대화는
+높은 effort가 값을 하지 않습니다. `budget_tokens`(생각 토큰 예산)는 이 모델들에서
+제거됐으므로 깊이는 `effort`로만 조절합니다.
+
+채널마다 최근 대화 12개를 기억하고, 봇을 껐다 켜면 잊습니다.
+
+### 시스템 프롬프트
+
+`personas/<key>.md` 전문이 그대로 넘어갑니다. 디스코드에서 필요한 출력 규칙
+(길이, 마크다운 자제 등)은 문서를 고치지 않고 `cogs/chat.py`의 `OUTPUT_RULES`에서
+덧붙입니다. 페르소나 문서는 캐릭터 설정만 담고, 매체 규칙은 코드가 담당합니다.
+시스템 프롬프트는 매 요청 동일해서 캐시됩니다.
+
 ## 페르소나
 
 `.env`의 `PERSONA=` 한 줄로 봇 전체 말투가 바뀝니다.
@@ -139,9 +168,10 @@ personas/
   __init__.py       # load_persona()
   base.py           # Persona 자료구조
   chara.py          # 차라 - 고정 대사
-  chara.md          # 차라 - 설정 문서 (AI 대화용 시스템 프롬프트)
+  chara.md          # 차라 - 설정 문서 (대화 기능의 시스템 프롬프트)
 cogs/
   utility.py        # 유틸리티 슬래시 명령어
+  chat.py           # 페르소나 대화 (ANTHROPIC_API_KEY 필요)
 ```
 
 `cogs/` 아래에 파일을 추가하면 자동으로 로드됩니다.
