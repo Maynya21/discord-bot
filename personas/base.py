@@ -66,6 +66,8 @@ class Persona:
     narrator_style: str = "italic"
     #: narrator_style이 "ansi"일 때 쓸 색. ANSI_COLORS의 키.
     narrator_color: str = "red"
+    #: True면 서술자 표기가 없어도 마지막 줄을 항상 강조한다.
+    accent_last_line: bool = False
 
     def __post_init__(self) -> None:
         if self.narrator_style not in NARRATOR_STYLES:
@@ -95,7 +97,7 @@ class Persona:
         """
         if self.accent_color is None:
             return self.color
-        if key in self.accent_keys or self.has_narrator(raw):
+        if self.accent_last_line or key in self.accent_keys or self.has_narrator(raw):
             return self.accent_color
         return self.color
 
@@ -112,13 +114,22 @@ class Persona:
         return random.choice(variants).format(**kwargs)
 
     def decorate(self, text: str) -> str:
-        """서술자 줄에 디스코드 마크다운을 입힌다."""
-        return "\n".join(
-            self._decorate_narrator(line[len(NARRATOR_PREFIX) :].strip())
-            if line.startswith(NARRATOR_PREFIX)
-            else line
-            for line in text.split("\n")
-        )
+        """강조할 줄에 디스코드 마크다운을 입힌다.
+
+        서술자 표기('* ')가 붙은 줄이 대상이고, accent_last_line이 켜져 있으면
+        표기와 무관하게 마지막 줄도 함께 강조한다.
+        """
+        lines = text.split("\n")
+        last = len(lines) - 1
+        out = []
+        for i, line in enumerate(lines):
+            if line.startswith(NARRATOR_PREFIX):
+                out.append(self._decorate_narrator(line[len(NARRATOR_PREFIX) :].strip()))
+            elif self.accent_last_line and i == last:
+                out.append(self._decorate_narrator(line.strip()))
+            else:
+                out.append(line)
+        return "\n".join(out)
 
     def _decorate_narrator(self, body: str) -> str:
         if not body:

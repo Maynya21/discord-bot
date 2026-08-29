@@ -66,8 +66,11 @@ PERSONA = Persona(
     accent_keys=frozenset(),
     lines=LINES,
     prompt_file="chara.md",
-    # "italic"이 기본. 빨간 글씨를 쓰려면 "ansi"로 바꾼다.
-    # 모바일에서는 색이 나오지 않고 코드블록으로만 보이니 확인 후 정할 것.
-    narrator_style="italic",
+    # 글자를 빨갛게 하려면 "ansi"여야 한다. 디스코드가 코드블록 안에서만
+    # 색을 허용해서, 고정폭 글꼴과 테두리가 따라붙고 모바일에서는 색이 안 나온다.
+    # 되돌리려면 "italic"으로 바꾼다.
+    narrator_style="ansi",
     narrator_color="red",
+    # 서술자 표기가 없어도 마지막 줄은 항상 빨갛게.
+    accent_last_line=True,
 )
