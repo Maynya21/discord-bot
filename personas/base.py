@@ -2,6 +2,10 @@
 
 각 페르소나 모듈은 `PERSONA`라는 이름으로 Persona 인스턴스 하나를 노출한다.
 명령어 코드는 이 인터페이스만 알면 되고, 어떤 캐릭터인지는 알 필요가 없다.
+
+대사에서 '* '로 시작하는 줄은 서술자 목소리다. 원문에는 그대로 두고,
+디스코드로 보낼 때 `narrator_style`에 따라 꾸며진다. 이 변환이 없으면
+'* '가 디스코드 마크다운의 글머리 기호로 해석되어 목록처럼 보인다.
 """
 
 from __future__ import annotations
@@ -10,6 +14,28 @@ import random
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
+
+#: 서술자 목소리 줄임표. personas/*.md 의 표기와 같다.
+NARRATOR_PREFIX = "* "
+
+#: 서술자 줄을 디스코드에서 어떻게 보여줄지.
+#: - "italic": *기울임*. 모든 기기에서 동작하고 본문 흐름을 유지한다.
+#: - "ansi":   ANSI 코드블록으로 색을 입힌다. PC에서만 색이 나오고,
+#:             코드블록이라 고정폭 글꼴에 테두리가 생긴다.
+#: - "plain":  꾸미지 않고 '* '만 떼어낸다.
+NARRATOR_STYLES = ("italic", "ansi", "plain")
+
+#: ANSI 스타일에서 쓰는 전경색 코드. 디스코드가 해석하는 값만 추렸다.
+ANSI_COLORS = {
+    "gray": 30,
+    "red": 31,
+    "green": 32,
+    "yellow": 33,
+    "blue": 34,
+    "pink": 35,
+    "cyan": 36,
+    "white": 37,
+}
 
 
 @dataclass
@@ -24,13 +50,50 @@ class Persona:
     lines: dict[str, list[str]] = field(default_factory=dict)
     #: AI 대화 기능이 시스템 프롬프트로 쓸 마크다운 문서. personas/ 기준 상대 경로.
     prompt_file: str = ""
+    #: 서술자 줄의 표시 방식. NARRATOR_STYLES 중 하나.
+    narrator_style: str = "italic"
+    #: narrator_style이 "ansi"일 때 쓸 색. ANSI_COLORS의 키.
+    narrator_color: str = "red"
+
+    def __post_init__(self) -> None:
+        if self.narrator_style not in NARRATOR_STYLES:
+            raise ValueError(
+                f"narrator_style은 {NARRATOR_STYLES} 중 하나여야 합니다: {self.narrator_style!r}"
+            )
+        if self.narrator_color not in ANSI_COLORS:
+            raise ValueError(
+                f"narrator_color는 {tuple(ANSI_COLORS)} 중 하나여야 합니다: {self.narrator_color!r}"
+            )
 
     def line(self, key: str, **kwargs: object) -> str:
-        """`key`에 해당하는 대사 후보 중 하나를 골라 반환한다."""
+        """`key`에 해당하는 대사 하나를 골라 디스코드용으로 꾸며서 반환한다."""
+        return self.decorate(self.raw_line(key, **kwargs))
+
+    def raw_line(self, key: str, **kwargs: object) -> str:
+        """대사 원문. 서술자 표기('* ')가 그대로 남아 있다."""
         variants = self.lines.get(key)
         if not variants:
             raise KeyError(f"페르소나 '{self.key}'에 '{key}' 대사가 정의되어 있지 않다.")
         return random.choice(variants).format(**kwargs)
+
+    def decorate(self, text: str) -> str:
+        """서술자 줄에 디스코드 마크다운을 입힌다."""
+        return "\n".join(
+            self._decorate_narrator(line[len(NARRATOR_PREFIX) :].strip())
+            if line.startswith(NARRATOR_PREFIX)
+            else line
+            for line in text.split("\n")
+        )
+
+    def _decorate_narrator(self, body: str) -> str:
+        if not body:
+            return ""
+        if self.narrator_style == "ansi":
+            code = ANSI_COLORS[self.narrator_color]
+            return f"```ansi\n\x1b[0;{code}m{body}\x1b[0m\n```"
+        if self.narrator_style == "italic":
+            return f"*{body}*"
+        return body
 
     @cached_property
     def system_prompt(self) -> str:
