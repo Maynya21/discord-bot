@@ -39,7 +39,12 @@ OUTPUT_RULES = """\
 class Chat(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.client = anthropic.AsyncAnthropic()
+        # 워크스페이스에 묶이지 않은 키는 어느 워크스페이스로 쓰는지 함께 보내야 한다.
+        # SDK는 이 환경변수를 일반 API 키에는 적용하지 않으므로 직접 헤더로 넘긴다.
+        workspace = os.getenv("ANTHROPIC_WORKSPACE_ID")
+        self.client = anthropic.AsyncAnthropic(
+            default_headers={"anthropic-workspace-id": workspace} if workspace else None
+        )
         self.history: dict[int, deque] = defaultdict(lambda: deque(maxlen=HISTORY))
         # 모듈이 아니라 여기서 읽는다. bot.py가 load_dotenv()를 부른 뒤라야 .env가 보인다.
         self.model = os.getenv("PERSONA_MODEL") or DEFAULT_MODEL

@@ -58,6 +58,17 @@ PERSONA_MODEL=claude-sonnet-5
 PERSONA_EFFORT=low
 ```
 
+키가 특정 워크스페이스에 묶여 있지 않으면 호출이 이렇게 거절됩니다.
+
+```
+anthropic-workspace-id is required when authenticating with an
+identity-linked API key
+```
+
+그때는 `ANTHROPIC_WORKSPACE_ID`에 워크스페이스 ID(`wrkspc_...`)를 넣으면 됩니다.
+설정돼 있을 때만 헤더로 붙고, 비어 있으면 아무것도 보내지 않습니다. 워크스페이스를
+지정해 새 키를 발급받아도 같은 문제가 해결됩니다.
+
 `PERSONA_EFFORT`는 생각의 깊이입니다 (`low`|`medium`|`high`|`xhigh`|`max`).
 대화는 낮은 쪽이 어울리고 저렴합니다. 코딩이나 장기 에이전트 작업과 달리 대화는
 높은 effort가 값을 하지 않습니다. `budget_tokens`(생각 토큰 예산)는 이 모델들에서
