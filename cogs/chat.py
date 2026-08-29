@@ -111,7 +111,10 @@ class Chat(commands.Cog):
             output_config={"effort": self.effort},
             messages=messages,
         )
-        return "".join(b.text for b in response.content if b.type == "text").strip()
+        reply = "".join(b.text for b in response.content if b.type == "text").strip()
+        # 발언을 '이름: 내용'으로 넘기다 보니 모델이 그 형식을 따라 할 때가 있다.
+        # 하지 말라고 일러도 새므로 여기서 떼어낸다.
+        return reply.removeprefix(f"{persona.name}:").lstrip()
 
 
 async def setup(bot: commands.Bot):
