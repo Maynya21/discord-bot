@@ -6,9 +6,12 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from personas import load_persona
+
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
+PERSONA_KEY = os.getenv("PERSONA", "chara")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bot")
@@ -18,11 +21,13 @@ intents.message_content = True
 intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+bot.persona = load_persona(PERSONA_KEY)
 
 
 @bot.event
 async def on_ready():
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
+    logger.info("Persona: %s (%s)", bot.persona.name, bot.persona.key)
     try:
         synced = await bot.tree.sync()
         logger.info("Synced %d slash command(s)", len(synced))
