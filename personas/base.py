@@ -14,6 +14,7 @@ import random
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
+from typing import NamedTuple
 
 #: 서술자 목소리 줄임표. personas/*.md 의 표기와 같다.
 NARRATOR_PREFIX = "* "
@@ -38,14 +39,25 @@ ANSI_COLORS = {
 }
 
 
+class Speech(NamedTuple):
+    """한 번의 발화. 디스코드로 보낼 본문과 그때 쓸 임베드 색."""
+
+    text: str
+    color: int
+
+
 @dataclass
 class Persona:
     #: personas/<key>.py 의 파일명과 같아야 한다. .env의 PERSONA= 값으로 쓰인다.
     key: str
     #: 임베드 등에 표시할 이름.
     name: str
-    #: 임베드 색상.
+    #: 평상시 임베드 색상.
     color: int
+    #: 무거운 대사에만 쓰는 색. None이면 색을 나누지 않고 항상 color를 쓴다.
+    accent_color: int | None = None
+    #: 내용과 무관하게 항상 accent_color로 나갈 대사 키.
+    accent_keys: frozenset[str] = frozenset()
     #: 고정 대사. 값은 후보 목록이고, 호출할 때마다 하나를 골라 쓴다.
     lines: dict[str, list[str]] = field(default_factory=dict)
     #: AI 대화 기능이 시스템 프롬프트로 쓸 마크다운 문서. personas/ 기준 상대 경로.
@@ -65,9 +77,32 @@ class Persona:
                 f"narrator_color는 {tuple(ANSI_COLORS)} 중 하나여야 합니다: {self.narrator_color!r}"
             )
 
+    def speak(self, key: str, **kwargs: object) -> Speech:
+        """대사 하나를 골라 본문과 임베드 색을 함께 반환한다."""
+        raw = self.raw_line(key, **kwargs)
+        return Speech(self.decorate(raw), self.color_for(key, raw))
+
     def line(self, key: str, **kwargs: object) -> str:
         """`key`에 해당하는 대사 하나를 골라 디스코드용으로 꾸며서 반환한다."""
         return self.decorate(self.raw_line(key, **kwargs))
+
+    def color_for(self, key: str, raw: str) -> int:
+        """이 발화에 쓸 임베드 색.
+
+        서술자 목소리가 섞인 대사만 accent_color로 나간다. 서술자 줄은 원래
+        아껴 쓰는 장치라, 색을 따로 관리하지 않아도 강조 빈도가 따라간다.
+        `raw`는 꾸미기 전 원문이어야 한다. 꾸미고 나면 '* ' 표기가 사라진다.
+        """
+        if self.accent_color is None:
+            return self.color
+        if key in self.accent_keys or self.has_narrator(raw):
+            return self.accent_color
+        return self.color
+
+    @staticmethod
+    def has_narrator(raw: str) -> bool:
+        """원문에 서술자 목소리 줄이 있는지."""
+        return any(line.startswith(NARRATOR_PREFIX) for line in raw.split("\n"))
 
     def raw_line(self, key: str, **kwargs: object) -> str:
         """대사 원문. 서술자 표기('* ')가 그대로 남아 있다."""

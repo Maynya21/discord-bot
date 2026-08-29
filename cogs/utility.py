@@ -17,12 +17,11 @@ class Utility(commands.Cog):
         """페르소나 대사를 설명문으로 얹은 임베드. 사실 정보는 필드에 따로 넣는다.
 
         모든 응답을 임베드로 내보내는 이유는 왼쪽 색 띠 때문이다. 디스코드에서
-        기기를 가리지 않고 색을 넣을 수 있는 자리가 여기뿐이다.
+        기기를 가리지 않고 색을 넣을 수 있는 자리가 여기뿐이다. 색은 대사마다
+        페르소나가 정한다.
         """
-        return discord.Embed(
-            description=self.persona.line(line_key, **kwargs),
-            color=self.persona.color,
-        )
+        speech = self.persona.speak(line_key, **kwargs)
+        return discord.Embed(description=speech.text, color=speech.color)
 
     @app_commands.command(name="ping", description="봇의 응답 속도를 확인합니다.")
     async def ping(self, interaction: discord.Interaction):

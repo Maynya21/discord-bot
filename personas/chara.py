@@ -51,8 +51,13 @@ LINES: dict[str, list[str]] = {
 
 PERSONA = Persona(
     key="chara",
+    # 원작 기본 텍스트가 흰색이고 빨강은 드물게 쓰이는 강조였다. 그 비율을 따른다.
+    # 서술자 목소리가 섞인 대사만 accent_color로 나간다(Persona.color_for 참고).
     name="차라",
-    color=0x8C1C13,
+    color=0xBFBFBF,
+    accent_color=0x9E1B1B,
+    # 내용과 무관하게 항상 빨갛게 하고 싶은 대사 키가 있으면 여기에 넣는다.
+    accent_keys=frozenset(),
     lines=LINES,
     prompt_file="chara.md",
     # "italic"이 기본. 빨간 글씨를 쓰려면 "ansi"로 바꾼다.
