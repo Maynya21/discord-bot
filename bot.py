@@ -55,12 +55,11 @@ async def on_app_command_error(
     else:
         text = f"{bot.persona.line('error')}\n`{type(error).__name__}: {error}`"
 
-    embed = discord.Embed(description=text, color=bot.persona.color)
     try:
         if interaction.response.is_done():
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(text, ephemeral=True)
         else:
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(text, ephemeral=True)
     except discord.HTTPException:
         logger.exception("오류 안내 메시지 전송 실패")
 

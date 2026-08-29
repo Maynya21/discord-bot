@@ -15,15 +15,13 @@ class Utility(commands.Cog):
     def persona(self) -> Persona:
         return self.bot.persona
 
-    def embed(self, line_key: str, **kwargs: object) -> discord.Embed:
-        """페르소나 대사를 설명문으로 얹은 임베드. 사실 정보는 필드에 따로 넣는다.
+    def data_embed(self) -> discord.Embed:
+        """사실 정보만 담는 표. 대사는 임베드 밖 본문으로 나간다.
 
-        모든 응답을 임베드로 내보내는 이유는 왼쪽 색 띠 때문이다. 디스코드에서
-        기기를 가리지 않고 색을 넣을 수 있는 자리가 여기뿐이다. 색은 대사마다
-        페르소나가 정한다.
+        대사를 임베드에 넣으면 캐릭터가 말하는 것이 아니라 프로그램이 출력하는
+        것처럼 보인다. 그래서 말은 평범한 메시지로 하고, 임베드는 표로만 쓴다.
         """
-        speech = self.persona.speak(line_key, **kwargs)
-        return discord.Embed(description=speech.text, color=speech.color)
+        return discord.Embed(color=self.persona.color)
 
     @app_commands.command(name="ping", description="봇의 응답 속도를 확인합니다.")
     async def ping(self, interaction: discord.Interaction):
@@ -31,7 +29,7 @@ class Utility(commands.Cog):
         latency = self.bot.latency
         latency_ms = 0 if math.isnan(latency) else round(latency * 1000)
         await interaction.response.send_message(
-            embed=self.embed("ping", latency=latency_ms)
+            self.persona.line("ping", latency=latency_ms)
         )
 
     @app_commands.command(name="userinfo", description="유저 정보를 확인합니다.")
@@ -41,7 +39,10 @@ class Utility(commands.Cog):
         self, interaction: discord.Interaction, member: discord.Member = None
     ):
         target = member or interaction.user
-        embed = self.embed("userinfo_self" if target == interaction.user else "userinfo")
+        line = self.persona.line(
+            "userinfo_self" if target == interaction.user else "userinfo"
+        )
+        embed = self.data_embed()
         embed.set_thumbnail(url=target.display_avatar.url)
         embed.add_field(name="이름", value=str(target), inline=True)
         embed.add_field(name="ID", value=target.id, inline=True)
@@ -59,13 +60,14 @@ class Utility(commands.Cog):
         )
         roles = [role.mention for role in reversed(target.roles) if role.name != "@everyone"]
         embed.add_field(name="역할", value=", ".join(roles) if roles else "없음", inline=False)
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(line, embed=embed)
 
     @app_commands.command(name="serverinfo", description="서버 정보를 확인합니다.")
     @app_commands.guild_only()
     async def serverinfo(self, interaction: discord.Interaction):
         guild = interaction.guild
-        embed = self.embed("serverinfo")
+        line = self.persona.line("serverinfo")
+        embed = self.data_embed()
         embed.set_author(name=guild.name)
         if guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
@@ -78,7 +80,7 @@ class Utility(commands.Cog):
             value=discord.utils.format_dt(guild.created_at, style="R"),
             inline=False,
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(line, embed=embed)
 
     @app_commands.command(name="avatar", description="유저의 아바타를 확인합니다.")
     @app_commands.describe(member="아바타를 확인할 유저 (생략 시 본인)")
@@ -87,10 +89,10 @@ class Utility(commands.Cog):
         self, interaction: discord.Interaction, member: discord.Member = None
     ):
         target = member or interaction.user
-        embed = self.embed("avatar")
+        embed = self.data_embed()
         embed.set_author(name=target.display_name)
         embed.set_image(url=target.display_avatar.url)
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(self.persona.line("avatar"), embed=embed)
 
     @app_commands.command(
         name="clear", description="이 채널에 내가 남긴 메시지를 지웁니다."
@@ -111,13 +113,13 @@ class Utility(commands.Cog):
             )
         except discord.Forbidden:
             await interaction.followup.send(
-                embed=self.embed("clear_forbidden"), ephemeral=True
+                self.persona.line("clear_forbidden"), ephemeral=True
             )
             return
 
         key = "clear" if deleted else "clear_nothing"
         await interaction.followup.send(
-            embed=self.embed(key, count=len(deleted)), ephemeral=True
+            self.persona.line(key, count=len(deleted)), ephemeral=True
         )
 
 
