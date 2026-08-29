@@ -1,3 +1,5 @@
+import math
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -25,7 +27,9 @@ class Utility(commands.Cog):
 
     @app_commands.command(name="ping", description="봇의 응답 속도를 확인합니다.")
     async def ping(self, interaction: discord.Interaction):
-        latency_ms = round(self.bot.latency * 1000)
+        # 첫 heartbeat 전에는 latency가 NaN이라 round()가 ValueError를 낸다.
+        latency = self.bot.latency
+        latency_ms = 0 if math.isnan(latency) else round(latency * 1000)
         await interaction.response.send_message(
             embed=self.embed("ping", latency=latency_ms)
         )

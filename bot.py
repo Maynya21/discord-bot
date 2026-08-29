@@ -3,6 +3,7 @@ import logging
 import os
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -33,6 +34,35 @@ async def on_ready():
         logger.info("Synced %d slash command(s)", len(synced))
     except Exception:
         logger.exception("Failed to sync slash commands")
+
+
+@bot.tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction, error: app_commands.AppCommandError
+):
+    """명령어에서 터진 예외를 콘솔과 디스코드 양쪽에 남긴다.
+
+    이게 없으면 디스코드에는 "애플리케이션이 응답하지 않았어요"만 뜨고
+    무엇이 왜 실패했는지 알 수 없다.
+    """
+    command = interaction.command.name if interaction.command else "?"
+    logger.exception("'/%s' 실행 실패", command, exc_info=error)
+
+    if isinstance(error, app_commands.MissingPermissions):
+        text = bot.persona.line("no_permission")
+    elif isinstance(error, app_commands.NoPrivateMessage):
+        text = bot.persona.line("guild_only")
+    else:
+        text = f"{bot.persona.line('error')}\n`{type(error).__name__}: {error}`"
+
+    embed = discord.Embed(description=text, color=bot.persona.color)
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+    except discord.HTTPException:
+        logger.exception("오류 안내 메시지 전송 실패")
 
 
 async def load_extensions():
