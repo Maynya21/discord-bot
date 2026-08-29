@@ -85,16 +85,23 @@ class Utility(commands.Cog):
         embed.set_image(url=target.display_avatar.url)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="clear", description="메시지를 지정한 개수만큼 삭제합니다.")
-    @app_commands.describe(amount="삭제할 메시지 개수 (1~100)")
+    @app_commands.command(
+        name="clear", description="이 채널에 내가 남긴 메시지를 지웁니다."
+    )
+    @app_commands.describe(
+        amount="거슬러 올라가며 훑어볼 최근 메시지 수 (1~100). 그중 내 것만 지웁니다."
+    )
     @app_commands.guild_only()
-    @app_commands.checks.has_permissions(manage_messages=True)
     async def clear(
-        self, interaction: discord.Interaction, amount: app_commands.Range[int, 1, 100]
+        self,
+        interaction: discord.Interaction,
+        amount: app_commands.Range[int, 1, 100] = 50,
     ):
         await interaction.response.defer(ephemeral=True)
         try:
-            deleted = await interaction.channel.purge(limit=amount)
+            deleted = await interaction.channel.purge(
+                limit=amount, check=lambda m: m.author.id == interaction.user.id
+            )
         except discord.Forbidden:
             await interaction.followup.send(
                 self.persona.line("clear_forbidden"), ephemeral=True
@@ -105,17 +112,6 @@ class Utility(commands.Cog):
         await interaction.followup.send(
             self.persona.line(key, count=len(deleted)), ephemeral=True
         )
-
-    @clear.error
-    async def clear_error(
-        self, interaction: discord.Interaction, error: app_commands.AppCommandError
-    ):
-        if isinstance(error, app_commands.MissingPermissions):
-            await interaction.response.send_message(
-                self.persona.line("clear_no_permission"), ephemeral=True
-            )
-        else:
-            raise error
 
 
 async def setup(bot: commands.Bot):
