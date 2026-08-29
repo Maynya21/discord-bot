@@ -14,7 +14,11 @@ class Utility(commands.Cog):
         return self.bot.persona
 
     def embed(self, line_key: str, **kwargs: object) -> discord.Embed:
-        """페르소나 대사를 설명문으로 얹은 임베드. 사실 정보는 필드에 따로 넣는다."""
+        """페르소나 대사를 설명문으로 얹은 임베드. 사실 정보는 필드에 따로 넣는다.
+
+        모든 응답을 임베드로 내보내는 이유는 왼쪽 색 띠 때문이다. 디스코드에서
+        기기를 가리지 않고 색을 넣을 수 있는 자리가 여기뿐이다.
+        """
         return discord.Embed(
             description=self.persona.line(line_key, **kwargs),
             color=self.persona.color,
@@ -24,7 +28,7 @@ class Utility(commands.Cog):
     async def ping(self, interaction: discord.Interaction):
         latency_ms = round(self.bot.latency * 1000)
         await interaction.response.send_message(
-            self.persona.line("ping", latency=latency_ms)
+            embed=self.embed("ping", latency=latency_ms)
         )
 
     @app_commands.command(name="userinfo", description="유저 정보를 확인합니다.")
@@ -104,13 +108,13 @@ class Utility(commands.Cog):
             )
         except discord.Forbidden:
             await interaction.followup.send(
-                self.persona.line("clear_forbidden"), ephemeral=True
+                embed=self.embed("clear_forbidden"), ephemeral=True
             )
             return
 
         key = "clear" if deleted else "clear_nothing"
         await interaction.followup.send(
-            self.persona.line(key, count=len(deleted)), ephemeral=True
+            embed=self.embed(key, count=len(deleted)), ephemeral=True
         )
 
 
