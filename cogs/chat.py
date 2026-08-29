@@ -23,6 +23,8 @@ HISTORY = 12
 MAX_TOKENS = 2048
 #: 디스코드 한 메시지 상한.
 DISCORD_LIMIT = 2000
+#: 실패 안내에 덧붙일 이유의 길이 상한.
+REASON_LIMIT = 800
 
 OUTPUT_RULES = """\
 지금 너는 디스코드 채팅에 있다. 아래는 이 매체에서의 출력 규칙이다.
@@ -69,10 +71,15 @@ class Chat(commands.Cog):
         async with message.channel.typing():
             try:
                 reply = await self.ask(list(history))
-            except anthropic.APIError:
+            except anthropic.APIError as error:
+                # 이유를 디스코드에도 띄운다. 콘솔 로그를 뒤지지 않고 원인을 알 수 있다.
                 logger.exception("Claude 호출 실패")
                 history.pop()
-                await message.reply(self.bot.persona.line("error"), mention_author=False)
+                detail = f"{type(error).__name__}: {error}"[:REASON_LIMIT]
+                await message.reply(
+                    f"{self.bot.persona.line('error')}\n`{detail}`",
+                    mention_author=False,
+                )
                 return
 
         history.append({"role": "assistant", "content": reply})
