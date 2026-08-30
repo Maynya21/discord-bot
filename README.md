@@ -114,22 +114,22 @@ python -m pip install -U yt-dlp
 **유튜브 프리미엄은 도움이 되지 않습니다.** 공식 앱 안에서의 혜택일 뿐 외부 도구의
 접근 권한을 주지 않고, 우회에 계정을 쓰면 그 계정이 위험해집니다.
 
-### 추가 설치
+### FFmpeg
 
-`pip install -r requirements.txt` 외에 **FFmpeg**가 따로 필요합니다. 오디오를
-변환해 디스코드로 보내는 프로그램이고, 파이썬 패키지가 아니라 별도 설치입니다.
+오디오를 변환해 디스코드로 보내려면 FFmpeg가 필요하지만, **따로 설치할 필요는
+없습니다.** `requirements.txt`의 `imageio-ffmpeg`가 실행 파일을 함께 가져옵니다.
 
-윈도우:
+봇은 먼저 PATH에서 `ffmpeg`를 찾고, 없으면 그 번들 실행 파일을 씁니다. 어느 쪽을
+쓰는지는 시작 로그에 찍힙니다.
 
-```powershell
-winget install Gyan.FFmpeg
+```
+INFO:bot.music:FFmpeg: C:\...\imageio_ffmpeg\binaries\ffmpeg-win-...exe
 ```
 
-설치 후 터미널을 새로 열고 `ffmpeg -version`이 나오면 됩니다. macOS는
-`brew install ffmpeg`, 데비안 계열은 `apt install ffmpeg`.
+시스템에 FFmpeg를 이미 설치했다면 그쪽이 우선합니다.
 
-`requirements.txt`의 `discord.py[voice]`가 음성 암호화(PyNaCl)를 함께 설치합니다.
-`voice will NOT be supported` 경고가 계속 뜨면 이 설치가 안 된 것입니다.
+`discord.py[voice]`가 음성 암호화(PyNaCl)를 함께 설치합니다. `voice will NOT be
+supported` 경고가 계속 뜨면 이 설치가 안 된 것입니다.
 
 ### 스포티파이 자격증명
 

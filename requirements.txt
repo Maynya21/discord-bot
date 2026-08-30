@@ -2,3 +2,4 @@ discord.py[voice]>=2.4.0
 python-dotenv>=1.0.1
 anthropic>=1.0
 yt-dlp>=2025.1.1
+imageio-ffmpeg>=0.5

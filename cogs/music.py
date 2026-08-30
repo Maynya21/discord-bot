@@ -12,6 +12,7 @@
 import asyncio
 import logging
 import os
+import shutil
 from collections import deque
 from typing import NamedTuple
 
@@ -44,6 +45,24 @@ FFMPEG_OPTS = {
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
     "options": "-vn",
 }
+
+
+def ffmpeg_path() -> str:
+    """쓸 FFmpeg 실행 파일.
+
+    PATH에 있으면 그것을 쓰고, 없으면 imageio-ffmpeg가 requirements로 함께
+    가져온 것을 쓴다. 덕분에 FFmpeg를 따로 설치하거나 PATH를 건드릴 필요가 없다.
+    """
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        logger.warning("FFmpeg를 찾지 못했습니다. 재생이 실패합니다.")
+        return "ffmpeg"
 
 
 class Track(NamedTuple):
@@ -104,7 +123,9 @@ class Player:
                 await self.send(self.say("music_not_found", query=track.title))
                 continue
 
-            source = discord.FFmpegOpusAudio(info["url"], **FFMPEG_OPTS)
+            source = discord.FFmpegOpusAudio(
+                info["url"], executable=self.cog.ffmpeg, **FFMPEG_OPTS
+            )
             self.current = track._replace(title=info.get("title") or track.title)
 
             voice = self.guild.voice_client
@@ -146,6 +167,7 @@ class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.players: dict[int, Player] = {}
+        self.ffmpeg = ffmpeg_path()
         client_id = os.getenv("SPOTIFY_CLIENT_ID")
         secret = os.getenv("SPOTIFY_CLIENT_SECRET")
         self.spotify = Spotify(client_id, secret) if client_id and secret else None
@@ -254,6 +276,8 @@ class Music(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(Music(bot))
+    cog = Music(bot)
+    await bot.add_cog(cog)
+    logger.info("FFmpeg: %s", cog.ffmpeg)
     if not (os.getenv("SPOTIFY_CLIENT_ID") and os.getenv("SPOTIFY_CLIENT_SECRET")):
         logger.warning("스포티파이 자격증명이 없어 링크 대신 검색어만 받습니다.")
