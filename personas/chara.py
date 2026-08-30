@@ -44,6 +44,47 @@ LINES: dict[str, list[str]] = {
     "clear_forbidden": [
         "나에게 메시지를 지울 권한이 없다. 이 서버가 나에게 그것을 준 적이 없다.",
     ],
+    # 음악. 문서의 '소리를 기억에 빗대는 버릇'을 여기에 쓴다.
+    "music_now": [
+        "{title}. 튼다.",
+        "{title}.\n* 소리가 방을 채웠다.",
+        "{title}.\n* 같은 선율도 자리를 바꾸면 달리 들린다.",
+    ],
+    "music_queued": [
+        "{title}. 줄에 세웠다.",
+        "받아 두었다. {title}.",
+    ],
+    "music_playlist": [
+        "{name}에서 {count}곡. 전부 줄에 세웠다.",
+        "{count}곡이다. {name}. 다 들을 셈인가.",
+    ],
+    "music_queue": [
+        "남은 것은 이렇다.",
+    ],
+    "music_not_found": [
+        "{query}. 그런 것은 찾지 못했다.",
+        "찾지 못했다. {query}.",
+    ],
+    "music_no_voice": [
+        "너부터 음성 채널에 들어가라. 혼자 떠들 생각은 없다.",
+    ],
+    "music_nothing": [
+        "지금 아무것도 울리지 않는다.",
+    ],
+    "music_skipped": [
+        "넘겼다.",
+        "됐다. 다음.",
+    ],
+    "music_stopped": [
+        "멈췄다. 나간다.",
+        "끝이다.\n* 조용해졌다.",
+    ],
+    "music_no_spotify": [
+        "스포티파이 쪽은 열려 있지 않다. 검색어로 말해라.",
+    ],
+    "music_empty_list": [
+        "그 안에는 아무것도 없었다.",
+    ],
     "no_permission": [
         "너에게는 그럴 권한이 없다. 나에게 따질 일은 아니다.",
     ],
