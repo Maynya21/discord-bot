@@ -7,7 +7,6 @@
 
 import logging
 import os
-import re
 from collections import defaultdict, deque
 
 import anthropic
@@ -26,10 +25,6 @@ MAX_TOKENS = 2048
 DISCORD_LIMIT = 2000
 #: 실패 안내에 덧붙일 이유의 길이 상한.
 REASON_LIMIT = 800
-#: 이름 뒤에 붙어 함께 떨어져야 하는 조사. 떼지 않으면 '차라는 어때'가
-#: '는 어때'로 남아 뜻이 무너진다.
-JOSA = "야|아|님|은|는|이|가|씨"
-
 
 OUTPUT_RULES = """\
 지금 너는 디스코드 채팅에 있다. 아래는 이 매체에서의 출력 규칙이다.
@@ -71,20 +66,15 @@ class Chat(commands.Cog):
             ref and getattr(ref.resolved, "author", None) == self.bot.user
         )
 
-    def strip_call(self, text: str) -> str:
-        """맨 앞의 호칭을 떼어낸다. 이름 중간 호출은 그대로 둔다."""
-        name = re.escape(self.bot.persona.name)
-        return re.sub(rf"^{name}(?:{JOSA})?[\s,.!?~]*", "", text).strip()
-
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not self.addressed(message):
             return
 
-        # 이름으로 시작하면 조사까지 떼어낸다. 이름만 부른 경우에는 그대로
-        # 넘겨서 불린 것에 답하게 한다.
-        stripped = self.strip_call(message.clean_content)
-        text = stripped or message.clean_content.strip()
+        # 이름을 떼어내지 않고 그대로 넘긴다. '차라는 어때?'에서 이름만 빼면
+        # '는 어때?'가 되어 뜻이 무너지는데, 발화를 '이름: 내용' 형태로 넘기고
+        # 있어 그대로도 자연스러운 채팅 로그로 읽힌다.
+        text = message.clean_content.strip()
         if not text:
             return
 
