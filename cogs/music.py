@@ -30,10 +30,15 @@ IDLE_TIMEOUT = 300
 PLAYLIST_LIMIT = 100
 #: /playlist로 한 번에 보여줄 곡 수.
 LIST_PREVIEW = 15
-#: 음량. 1.0이 원본 크기인데 유튜브 음원은 그대로면 대체로 시끄럽다.
-DEFAULT_VOLUME = 0.3
+#: 퍼센트 조절의 기준값. 1.0이 '이 봇의 보통 크기'이고, 그 절대 크기는
+#: 아래 MUSIC_GAIN_DB가 정한다.
+DEFAULT_VOLUME = 1.0
 VOLUME_STEP = 0.1
 MAX_VOLUME = 2.0
+#: FFmpeg 단계에서 먼저 깎는 양(dB). 유튜브 음원은 대체로 커서, 디스코드로
+#: 보내기 전에 여기서 한 번 낮춘다. 퍼센트 조절은 그 위에서 움직인다.
+#: 여전히 크면 이 값을 더 내린다(-30 등). 0이면 원본 그대로.
+DEFAULT_GAIN_DB = -20.0
 
 YDL_OPTS = {
     "format": "bestaudio/best",
@@ -43,11 +48,19 @@ YDL_OPTS = {
     "default_search": "ytsearch",
     "extract_flat": False,
 }
-FFMPEG_OPTS = {
-    # 스트림이 끊기면 다시 붙는다. 없으면 긴 곡 중간에 조용히 멈춘다.
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn",
-}
+def ffmpeg_opts(gain_db: float) -> dict[str, str]:
+    """FFmpeg 인자. 음량 감쇠를 여기서 건다.
+
+    PCMVolumeTransformer는 디스코드로 넘기기 직전에만 곱하는 값이라, 들어오는
+    소리가 이미 크면 퍼센트를 낮춰도 충분히 조용해지지 않는다. 절대 크기는
+    여기서 정하고 퍼센트는 그 위에서 움직이게 한다.
+    """
+    filters = f"volume={gain_db}dB" if gain_db else None
+    return {
+        # 스트림이 끊기면 다시 붙는다. 없으면 긴 곡 중간에 조용히 멈춘다.
+        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        "options": f"-vn -af {filters}" if filters else "-vn",
+    }
 
 
 def ffmpeg_path() -> str:
@@ -229,7 +242,7 @@ class Player:
             # 뒤라 중간에 크기를 바꿀 수 없다.
             source = discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
-                    info["url"], executable=self.cog.ffmpeg, **FFMPEG_OPTS
+                    info["url"], executable=self.cog.ffmpeg, **self.cog.ffmpeg_opts
                 ),
                 volume=self.volume,
             )
@@ -344,6 +357,8 @@ class Music(commands.Cog):
         self.bot = bot
         self.players: dict[int, Player] = {}
         self.ffmpeg = ffmpeg_path()
+        self.gain_db = float(os.getenv("MUSIC_GAIN_DB") or DEFAULT_GAIN_DB)
+        self.ffmpeg_opts = ffmpeg_opts(self.gain_db)
         client_id = os.getenv("SPOTIFY_CLIENT_ID")
         secret = os.getenv("SPOTIFY_CLIENT_SECRET")
         self.spotify = Spotify(client_id, secret) if client_id and secret else None
@@ -521,5 +536,6 @@ async def setup(bot: commands.Bot):
     cog = Music(bot)
     await bot.add_cog(cog)
     logger.info("FFmpeg: %s", cog.ffmpeg)
+    logger.info("음량 감쇠: %+g dB (MUSIC_GAIN_DB로 조절)", cog.gain_db)
     if not (os.getenv("SPOTIFY_CLIENT_ID") and os.getenv("SPOTIFY_CLIENT_SECRET")):
         logger.warning("스포티파이 자격증명이 없어 링크 대신 검색어만 받습니다.")
