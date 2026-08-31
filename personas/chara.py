@@ -75,6 +75,9 @@ LINES: dict[str, list[str]] = {
     "music_no_voice": [
         "너부터 음성 채널에 들어가라. 빈 방에서 혼자 떠들 생각은 없다.",
     ],
+    "music_cant_join": [
+        "{channel}에는 들어갈 수 없다. 나에게 없는 권한이 있다 — {missing}.",
+    ],
     "music_nothing": [
         "지금 아무것도 울리지 않는다.",
     ],

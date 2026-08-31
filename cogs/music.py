@@ -356,18 +356,55 @@ class Music(commands.Cog):
         player.channel = interaction.channel
         return player
 
+    def voice_channel_of(self, interaction: discord.Interaction):
+        """부른 사람이 있는 음성 채널. 없으면 None.
+
+        Member.voice는 캐시를 읽는 값이라 큰 서버에서 비어 있을 수 있다.
+        그때는 채널을 직접 훑어서 찾는다.
+        """
+        state = getattr(interaction.user, "voice", None)
+        if state and state.channel:
+            return state.channel
+        for channel in interaction.guild.voice_channels:
+            if any(m.id == interaction.user.id for m in channel.members):
+                return channel
+        return None
+
     async def join(self, interaction: discord.Interaction) -> bool:
         """부른 사람이 있는 음성 채널로 들어간다."""
-        voice_state = getattr(interaction.user, "voice", None)
-        if voice_state is None or voice_state.channel is None:
+        channel = self.voice_channel_of(interaction)
+        if channel is None:
             await interaction.followup.send(self.bot.persona.line("music_no_voice"))
             return False
 
+        # 권한이 없어 못 들어가는 것과 아예 안 들어와 있는 것은 다른 문제다.
+        # 둘을 같은 말로 알리면 원인을 찾을 수 없다.
+        perms = channel.permissions_for(interaction.guild.me)
+        missing = [
+            name
+            for name, ok in (("채널 보기", perms.view_channel), ("연결", perms.connect), ("말하기", perms.speak))
+            if not ok
+        ]
+        if missing:
+            await interaction.followup.send(
+                self.bot.persona.line(
+                    "music_cant_join", channel=channel.name, missing=", ".join(missing)
+                )
+            )
+            return False
+
         voice = interaction.guild.voice_client
-        if voice is None:
-            await voice_state.channel.connect()
-        elif voice.channel != voice_state.channel:
-            await voice.move_to(voice_state.channel)
+        try:
+            if voice is None:
+                await channel.connect()
+            elif voice.channel != channel:
+                await voice.move_to(channel)
+        except (discord.ClientException, asyncio.TimeoutError, discord.HTTPException) as error:
+            logger.exception("'%s' 에 들어가지 못했다", channel.name)
+            await interaction.followup.send(
+                f"{self.bot.persona.line('error')}\n`{type(error).__name__}: {error}`"
+            )
+            return False
         return True
 
     @app_commands.command(name="play", description="음악을 재생합니다. 검색어나 유튜브·스포티파이 링크.")
