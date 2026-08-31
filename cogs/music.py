@@ -31,6 +31,10 @@ IDLE_TIMEOUT = 300
 PLAYLIST_LIMIT = 100
 #: /queue로 보여줄 곡 수.
 QUEUE_PREVIEW = 10
+#: 음량 기본값과 조절 폭. 1.0이 원본 크기다.
+DEFAULT_VOLUME = 1.0
+VOLUME_STEP = 0.1
+MAX_VOLUME = 2.0
 
 YDL_OPTS = {
     "format": "bestaudio/best",
@@ -86,6 +90,75 @@ def extract(query: str) -> dict:
     return info
 
 
+class Controls(discord.ui.View):
+    """재생 중에 채팅창에 띄우는 조작 버튼.
+
+    누른 사람을 가리지 않는다. 같은 음성 채널에서 같이 듣는 사람이라면
+    누구든 넘기고 멈출 수 있어야 편하다.
+    """
+
+    def __init__(self, player: "Player"):
+        super().__init__(timeout=None)
+        self.player = player
+        self.refresh()
+
+    def refresh(self):
+        """일시정지 버튼의 표시를 지금 상태에 맞춘다."""
+        voice = self.player.guild.voice_client
+        paused = bool(voice and voice.is_paused())
+        self.toggle.emoji = "▶️" if paused else "⏸️"
+
+    async def apply(self, interaction: discord.Interaction):
+        """버튼을 누른 자리에서 패널을 갱신한다."""
+        self.refresh()
+        await interaction.response.edit_message(embed=self.player.panel_embed(), view=self)
+
+    @discord.ui.button(emoji="⏸️", style=discord.ButtonStyle.secondary)
+    async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice = self.player.guild.voice_client
+        if voice is None:
+            await self.apply(interaction)
+            return
+        if voice.is_paused():
+            voice.resume()
+        elif voice.is_playing():
+            voice.pause()
+        await self.apply(interaction)
+
+    @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary)
+    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice = self.player.guild.voice_client
+        if voice and (voice.is_playing() or voice.is_paused()):
+            # stop()이 after 콜백을 부르고, 재생 루프가 다음 곡으로 넘어간다.
+            voice.stop()
+        await self.apply(interaction)
+
+    @discord.ui.button(emoji="🔉", style=discord.ButtonStyle.secondary)
+    async def quieter(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.player.set_volume(self.player.volume - VOLUME_STEP)
+        await self.apply(interaction)
+
+    @discord.ui.button(emoji="🔊", style=discord.ButtonStyle.secondary)
+    async def louder(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.player.set_volume(self.player.volume + VOLUME_STEP)
+        await self.apply(interaction)
+
+    @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
+    async def stop_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = self.player
+        player.stop()
+        voice = player.guild.voice_client
+        if voice:
+            await voice.disconnect()
+        player.cog.players.pop(player.guild.id, None)
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content=player.say("music_stopped"), embed=None, view=self
+        )
+        self.stop()
+
+
 class Player:
     """서버 한 곳의 대기열과 재생 루프."""
 
@@ -99,7 +172,13 @@ class Player:
         self.added = asyncio.Event()
         self.advance = asyncio.Event()
         self.current: Track | None = None
-        self.task = cog.bot.loop.create_task(self.run())
+        self.volume = DEFAULT_VOLUME
+        #: 조작 패널. 곡이 바뀔 때마다 새로 보내지 않고 이 메시지를 고쳐 쓴다.
+        self.panel: discord.Message | None = None
+        # bot.loop은 봇이 켜진 뒤에만 접근된다. 지금 도는 루프를 직접 잡아 둔다.
+        # 재생 종료 콜백이 다른 스레드에서 오므로 그때도 이 참조가 필요하다.
+        self.loop = asyncio.get_running_loop()
+        self.task = self.loop.create_task(self.run())
 
     def say(self, key: str, **kwargs) -> str:
         return self.cog.bot.persona.line(key, **kwargs)
@@ -123,8 +202,13 @@ class Player:
                 await self.send(self.say("music_not_found", query=track.title))
                 continue
 
-            source = discord.FFmpegOpusAudio(
-                info["url"], executable=self.cog.ffmpeg, **FFMPEG_OPTS
+            # 음량을 조절하려면 PCM으로 받아야 한다. Opus로 받으면 이미 압축된
+            # 뒤라 중간에 크기를 바꿀 수 없다.
+            source = discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    info["url"], executable=self.cog.ffmpeg, **FFMPEG_OPTS
+                ),
+                volume=self.volume,
             )
             self.current = track._replace(title=info.get("title") or track.title)
 
@@ -132,7 +216,7 @@ class Player:
             if voice is None or not voice.is_connected():
                 return
             voice.play(source, after=self._finished)
-            await self.send(self.say("music_now", title=self.current.title))
+            await self.show_panel()
 
             await self.advance.wait()
             self.current = None
@@ -140,7 +224,7 @@ class Player:
     def _finished(self, error: Exception | None):
         if error:
             logger.error("재생 중 오류: %s", error)
-        self.cog.bot.loop.call_soon_threadsafe(self.advance.set)
+        self.loop.call_soon_threadsafe(self.advance.set)
 
     async def send(self, text: str):
         try:
@@ -152,7 +236,51 @@ class Player:
         voice = self.guild.voice_client
         if voice:
             await voice.disconnect()
+        await self.retire_panel()
         self.cog.players.pop(self.guild.id, None)
+
+    async def retire_panel(self):
+        """더 이상 조작할 것이 없으면 패널의 버튼을 죽인다."""
+        if self.panel is None:
+            return
+        try:
+            await self.panel.edit(embed=None, view=None)
+        except discord.HTTPException:
+            pass
+        self.panel = None
+
+    def set_volume(self, value: float):
+        self.volume = max(0.0, min(MAX_VOLUME, round(value, 2)))
+        voice = self.guild.voice_client
+        if voice and isinstance(voice.source, discord.PCMVolumeTransformer):
+            voice.source.volume = self.volume
+
+    def panel_embed(self) -> discord.Embed:
+        embed = discord.Embed(color=self.cog.bot.persona.color)
+        embed.add_field(
+            name="지금", value=self.current.title if self.current else "없음", inline=False
+        )
+        embed.add_field(name="대기", value=f"{len(self.pending)}곡", inline=True)
+        embed.add_field(name="음량", value=f"{round(self.volume * 100)}%", inline=True)
+        return embed
+
+    async def show_panel(self):
+        """조작 패널을 띄운다. 이미 있으면 새로 보내지 않고 고쳐 쓴다."""
+        line = self.say("music_now", title=self.current.title)
+        view = Controls(self)
+        if self.panel is not None:
+            try:
+                await self.panel.edit(content=line, embed=self.panel_embed(), view=view)
+                return
+            except discord.HTTPException:
+                # 누가 지웠다. 아래에서 새로 보낸다.
+                self.panel = None
+        try:
+            self.panel = await self.channel.send(
+                line, embed=self.panel_embed(), view=view
+            )
+        except discord.HTTPException:
+            logger.exception("패널 전송 실패")
 
     def add(self, track: Track):
         self.pending.append(track)
@@ -269,6 +397,7 @@ class Music(commands.Cog):
         player = self.players.pop(interaction.guild.id, None)
         if player:
             player.stop()
+            await player.retire_panel()
         voice = interaction.guild.voice_client
         if voice:
             await voice.disconnect()
