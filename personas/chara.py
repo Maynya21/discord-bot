@@ -59,7 +59,14 @@ LINES: dict[str, list[str]] = {
         "{count}곡이다. {name}. 다 들을 셈인가.",
     ],
     "music_queue": [
-        "남은 것은 이렇다.",
+        "줄에 선 것은 이렇다.",
+    ],
+    "music_removed": [
+        "{title}. 뺐다.",
+        "{title}. 빠졌다. 없던 것이 되지는 않지만.",
+    ],
+    "music_no_such_track": [
+        "{position}번은 없다. 목록을 다시 봐라.",
     ],
     "music_not_found": [
         "{query}. 그런 것은 찾지 못했다. 다르게 불러 보면 나올지도 모른다.",

@@ -4,16 +4,15 @@
 담당한다 — 스포티파이 링크를 받으면 곡 이름 목록으로 풀고, 각 곡을 유튜브에서
 찾아 재생한다.
 
-재생 목록은 서버마다 따로 돌아간다. 각 서버의 Player가 대기열을 하나 들고,
-백그라운드 작업이 한 곡씩 꺼내 재생한다. 아무것도 들어오지 않은 채 IDLE_TIMEOUT이
-지나면 스스로 나간다.
+재생목록은 서버마다 따로 돌아간다. 각 서버의 Player가 목록 하나와 지금 위치를
+들고, 백그라운드 작업이 위치를 옮겨 가며 재생한다. 곡을 꺼내 버리지 않으므로
+끝까지 가면 처음으로 돌아갈 수 있다. 새 곡 없이 IDLE_TIMEOUT이 지나면 나간다.
 """
 
 import asyncio
 import logging
 import os
 import shutil
-from collections import deque
 from typing import NamedTuple
 
 import discord
@@ -29,10 +28,10 @@ logger = logging.getLogger("bot.music")
 IDLE_TIMEOUT = 300
 #: 스포티파이 링크 하나에서 가져올 곡 수 상한.
 PLAYLIST_LIMIT = 100
-#: /queue로 보여줄 곡 수.
-QUEUE_PREVIEW = 10
-#: 음량 기본값과 조절 폭. 1.0이 원본 크기다.
-DEFAULT_VOLUME = 1.0
+#: /playlist로 한 번에 보여줄 곡 수.
+LIST_PREVIEW = 15
+#: 음량. 1.0이 원본 크기인데 유튜브 음원은 그대로면 대체로 시끄럽다.
+DEFAULT_VOLUME = 0.3
 VOLUME_STEP = 0.1
 MAX_VOLUME = 2.0
 
@@ -107,6 +106,11 @@ class Controls(discord.ui.View):
         voice = self.player.guild.voice_client
         paused = bool(voice and voice.is_paused())
         self.toggle.emoji = "▶️" if paused else "⏸️"
+        self.loop_all.style = (
+            discord.ButtonStyle.success
+            if self.player.loop_all
+            else discord.ButtonStyle.secondary
+        )
 
     async def apply(self, interaction: discord.Interaction):
         """버튼을 누른 자리에서 패널을 갱신한다."""
@@ -143,6 +147,11 @@ class Controls(discord.ui.View):
         self.player.set_volume(self.player.volume + VOLUME_STEP)
         await self.apply(interaction)
 
+    @discord.ui.button(emoji="🔁", style=discord.ButtonStyle.secondary)
+    async def loop_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.player.loop_all = not self.player.loop_all
+        await self.apply(interaction)
+
     @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
     async def stop_all(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = self.player
@@ -166,9 +175,11 @@ class Player:
         self.cog = cog
         self.guild = guild
         self.channel = channel
-        # asyncio.Queue 대신 deque를 쓴다. /queue가 남은 곡을 들여다봐야 하는데
-        # Queue는 그 방법을 공개하지 않는다.
-        self.pending: deque[Track] = deque()
+        # 꺼내 버리는 대기열이 아니라 유지되는 재생목록이다. 곡을 소모하지 않고
+        # 위치만 옮기기 때문에 끝까지 가면 처음으로 돌아갈 수 있다.
+        self.tracks: list[Track] = []
+        self.index = 0
+        self.loop_all = True
         self.added = asyncio.Event()
         self.advance = asyncio.Event()
         self.current: Track | None = None
@@ -183,23 +194,35 @@ class Player:
     def say(self, key: str, **kwargs) -> str:
         return self.cog.bot.persona.line(key, **kwargs)
 
-    async def run(self):
+    async def next_track(self) -> Track | None:
+        """다음에 틀 곡. 없으면 새 곡이 들어오기를 기다리고, 시간이 다 되면 None."""
         while True:
-            self.advance.clear()
-            while not self.pending:
+            if self.index >= len(self.tracks):
+                if self.tracks and self.loop_all:
+                    self.index = 0
+                    continue
                 self.added.clear()
                 try:
                     await asyncio.wait_for(self.added.wait(), timeout=IDLE_TIMEOUT)
                 except asyncio.TimeoutError:
-                    await self.disconnect()
-                    return
-            track = self.pending.popleft()
+                    return None
+                continue
+            return self.tracks[self.index]
+
+    async def run(self):
+        while True:
+            self.advance.clear()
+            track = await self.next_track()
+            if track is None:
+                await self.disconnect()
+                return
 
             try:
                 info = await asyncio.to_thread(extract, track.query)
             except Exception:
                 logger.exception("'%s' 를 찾지 못했다", track.query)
                 await self.send(self.say("music_not_found", query=track.title))
+                self.index += 1
                 continue
 
             # 음량을 조절하려면 PCM으로 받아야 한다. Opus로 받으면 이미 압축된
@@ -220,6 +243,7 @@ class Player:
 
             await self.advance.wait()
             self.current = None
+            self.index += 1
 
     def _finished(self, error: Exception | None):
         if error:
@@ -260,8 +284,10 @@ class Player:
         embed.add_field(
             name="지금", value=self.current.title if self.current else "없음", inline=False
         )
-        embed.add_field(name="대기", value=f"{len(self.pending)}곡", inline=True)
+        position = f"{self.index + 1} / {len(self.tracks)}" if self.tracks else "0 / 0"
+        embed.add_field(name="목록", value=position, inline=True)
         embed.add_field(name="음량", value=f"{round(self.volume * 100)}%", inline=True)
+        embed.add_field(name="반복", value="켜짐" if self.loop_all else "꺼짐", inline=True)
         return embed
 
     async def show_panel(self):
@@ -283,12 +309,34 @@ class Player:
             logger.exception("패널 전송 실패")
 
     def add(self, track: Track):
-        self.pending.append(track)
+        self.tracks.append(track)
         self.added.set()
+
+    def remove(self, position: int) -> Track | None:
+        """1부터 세는 번호로 한 곡을 뺀다. 없는 번호면 None.
+
+        앞쪽을 빼면 현재 위치가 한 칸 당겨진다. 지금 틀고 있는 곡을 뺐다면
+        재생을 멈춰서 다음 곡으로 넘어가게 한다 — run()이 뒤에 index를 1
+        올리므로 여기서 미리 1을 내려 두어야 다음 곡을 건너뛰지 않는다.
+        """
+        i = position - 1
+        if not 0 <= i < len(self.tracks):
+            return None
+
+        removed = self.tracks.pop(i)
+        playing_now = i == self.index
+        if i <= self.index:
+            self.index -= 1
+        if playing_now:
+            voice = self.guild.voice_client
+            if voice and (voice.is_playing() or voice.is_paused()):
+                voice.stop()
+        return removed
 
     def stop(self):
         self.task.cancel()
-        self.pending.clear()
+        self.tracks.clear()
+        self.index = 0
 
 
 class Music(commands.Cog):
@@ -371,25 +419,47 @@ class Music(commands.Cog):
         voice.stop()
         await interaction.response.send_message(self.bot.persona.line("music_skipped"))
 
-    @app_commands.command(name="queue", description="대기열을 봅니다.")
+    @app_commands.command(name="playlist", description="재생목록을 보거나 곡을 뺍니다.")
+    @app_commands.describe(remove="뺄 곡의 번호. 비우면 목록만 봅니다.")
     @app_commands.guild_only()
-    async def queue(self, interaction: discord.Interaction):
+    async def playlist(
+        self, interaction: discord.Interaction, remove: int | None = None
+    ):
         player = self.players.get(interaction.guild.id)
-        if player is None or (player.current is None and not player.pending):
+        if player is None or not player.tracks:
             await interaction.response.send_message(self.bot.persona.line("music_nothing"))
             return
 
-        lines = []
-        if player.current:
-            lines.append(f"지금: {player.current.title}")
-        upcoming = list(player.pending)[:QUEUE_PREVIEW]
-        lines += [f"{i}. {t.title}" for i, t in enumerate(upcoming, 1)]
-        rest = len(player.pending) - len(upcoming)
+        line = self.bot.persona.line("music_queue")
+        if remove is not None:
+            dropped = player.remove(remove)
+            if dropped is None:
+                await interaction.response.send_message(
+                    self.bot.persona.line("music_no_such_track", position=remove)
+                )
+                return
+            line = self.bot.persona.line("music_removed", title=dropped.title)
+            if not player.tracks:
+                await interaction.response.send_message(line)
+                return
+
+        await interaction.response.send_message(line, embed=self.listing(player))
+
+    def listing(self, player: Player) -> discord.Embed:
+        """번호 붙은 재생목록. 지금 곡에 표시를 남긴다."""
+        embed = discord.Embed(color=self.bot.persona.color)
+        rows = []
+        for i, track in enumerate(player.tracks[:LIST_PREVIEW], 1):
+            mark = "▶ " if i - 1 == player.index else "　 "
+            rows.append(f"{mark}{i}. {track.title}"[:100])
+        rest = len(player.tracks) - LIST_PREVIEW
         if rest > 0:
-            lines.append(f"그리고 {rest}개 더.")
-        await interaction.response.send_message(
-            f"{self.bot.persona.line('music_queue')}\n" + "\n".join(lines)
+            rows.append(f"　 ...그리고 {rest}곡 더.")
+        embed.description = "\n".join(rows)
+        embed.set_footer(
+            text=f"{len(player.tracks)}곡 · 반복 {'켜짐' if player.loop_all else '꺼짐'}"
         )
+        return embed
 
     @app_commands.command(name="stop", description="재생을 멈추고 음성 채널에서 나갑니다.")
     @app_commands.guild_only()
