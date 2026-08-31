@@ -372,6 +372,12 @@ class Music(commands.Cog):
 
     async def join(self, interaction: discord.Interaction) -> bool:
         """부른 사람이 있는 음성 채널로 들어간다."""
+        # scope=bot 없이 초대하면 봇이 서버 멤버가 아니라 유저 계정에 붙는다.
+        # 그러면 명령어는 보이는데 음성 채널에는 들어갈 수 없다.
+        if interaction.guild is None or interaction.guild.me is None:
+            await interaction.followup.send(self.bot.persona.line("music_not_member"))
+            return False
+
         channel = self.voice_channel_of(interaction)
         if channel is None:
             await interaction.followup.send(self.bot.persona.line("music_no_voice"))

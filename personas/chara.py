@@ -75,6 +75,10 @@ LINES: dict[str, list[str]] = {
     "music_no_voice": [
         "너부터 음성 채널에 들어가라. 빈 방에서 혼자 떠들 생각은 없다.",
     ],
+    "music_not_member": [
+        "나는 이 서버에 없다. 앱으로만 붙어 있을 뿐이다.\n"
+        "제대로 부르려면 scope=bot 이 들어간 초대 링크로 다시 들여라.",
+    ],
     "music_cant_join": [
         "{channel}에는 들어갈 수 없다. 나에게 없는 권한이 있다 — {missing}.",
     ],
