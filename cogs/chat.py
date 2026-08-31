@@ -7,6 +7,7 @@
 
 import logging
 import os
+import re
 from collections import defaultdict, deque
 
 import anthropic
@@ -25,6 +26,10 @@ MAX_TOKENS = 2048
 DISCORD_LIMIT = 2000
 #: 실패 안내에 덧붙일 이유의 길이 상한.
 REASON_LIMIT = 800
+#: 이름 뒤에 붙어 함께 떨어져야 하는 조사. 떼지 않으면 '차라는 어때'가
+#: '는 어때'로 남아 뜻이 무너진다.
+JOSA = "야|아|님|은|는|이|가|씨"
+
 
 OUTPUT_RULES = """\
 지금 너는 디스코드 채팅에 있다. 아래는 이 매체에서의 출력 규칙이다.
@@ -51,22 +56,35 @@ class Chat(commands.Cog):
         self.effort = os.getenv("PERSONA_EFFORT") or DEFAULT_EFFORT
 
     def addressed(self, message: discord.Message) -> bool:
-        """나에게 건 말인지. 페르소나는 먼저 말을 걸지 않는다."""
+        """나에게 건 말인지. 페르소나는 먼저 말을 걸지 않는다.
+
+        이름은 문장 어디에 있든 부른 것으로 본다. '야 차라 이거 봐봐'처럼 앞에
+        말이 붙는 쪽이 실제로 더 흔하다. 대신 이름을 입에 올리기만 해도 끼어들게
+        되므로, 캐릭터 얘기를 자주 하는 채널이라면 좁힐 필요가 있다.
+        """
         if self.bot.user in message.mentions:
             return True
-        if message.content.startswith(self.bot.persona.name):
+        if self.bot.persona.name in message.content:
             return True
         ref = message.reference
         return bool(
             ref and getattr(ref.resolved, "author", None) == self.bot.user
         )
 
+    def strip_call(self, text: str) -> str:
+        """맨 앞의 호칭을 떼어낸다. 이름 중간 호출은 그대로 둔다."""
+        name = re.escape(self.bot.persona.name)
+        return re.sub(rf"^{name}(?:{JOSA})?[\s,.!?~]*", "", text).strip()
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not self.addressed(message):
             return
 
-        text = message.clean_content.removeprefix(self.bot.persona.name).strip()
+        # 이름으로 시작하면 조사까지 떼어낸다. 이름만 부른 경우에는 그대로
+        # 넘겨서 불린 것에 답하게 한다.
+        stripped = self.strip_call(message.clean_content)
+        text = stripped or message.clean_content.strip()
         if not text:
             return
 
